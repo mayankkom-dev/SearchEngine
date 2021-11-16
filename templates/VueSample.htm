@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html>
+<!-- This is absolutely NOT production-ready code. -->
+<head>
+    <title>Lucene Search Demo</title>
+    <meta charset="UTF-8">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <style type="text/css">
+
+
+            .popup{
+                box-shadow: 0 3px 10px rgb(0 0 0 / 0.2);
+                padding: 20px 20px;
+                margin: 0% 5%;
+                display: inline-block;
+                align-items: center;
+                justify-content: center;
+                width: 90%;
+                height: auto;
+
+            }
+            div.card {
+              box-shadow: 0 3px 10px rgb(0 0 0 / 0.2);
+              padding: 10px 10px;
+              margin: 20px 0px;
+            }
+            div.clickSugg{
+            display:inline-block;
+            font-weight: bold;
+            font-style: italic;
+            color:#1a0dab;
+            cursor: pointer;
+            }
+
+            div.ct{
+	            text-align: center;
+
+            }
+            div.polaroid {
+                  width: 100%;
+                  height:20%;
+                  opacity: 0.7;
+                  background-color: white;
+                  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+                  margin-bottom: 25px;
+                  margin-left: auto;
+                  margin-right: auto;
+                }
+
+            div.container2 {
+              text-align: center;
+              padding: 10px 20px;
+              font-weight: 800;
+              color: black;
+              font-size: 1.4em;
+            }
+            input {
+                margin: 5px;
+                padding: 10px;
+            }
+        </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-throttle-debounce/1.1/jquery.ba-throttle-debounce.min.js"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.0/css/bootstrap.min.css">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.0/js/bootstrap.min.js"></script>
+
+
+</head>
+
+<body>
+<div>
+<form id="usrSrch_mthd">
+
+        <table class="table" width="100%">
+            <colgroup>
+                <col span="1" style="width: 33%;">
+                <col span="1" style="width: 34%;">
+                <col span="1" style="width: 33%;">
+            </colgroup>
+            <tr>
+                <td>
+		    <div class="polaroid">
+			<img src="{{url_for('static', filename='uwin.jpg')}}" alt="uwinLogo" style="width:100%">
+		    </div>
+		</td>
+                <td>
+                    <div class="polaroid">
+                    <img src="{{url_for('static', filename='R.webp')}}" alt="Logo" style="width:100%">
+                    <div class="container2">
+                        Academic Paper Search Engine
+                    </div>
+                    </div>
+                </td>
+                <td>&nbsp;</td>
+
+            </tr>
+        </table>
+
+    <!--            <img width="800" height="200" src="R.webp">-->
+    <div class="ct">
+        <!--                <h2>Academic Paper Search Engine</h2>-->
+        Enter Search terms<br/>
+        <div>
+            <input id="inp1" class="typeahead" name="queryTerm" type="text" size="50" autofocus> <br/><br/>
+            <input id="inp2" type="checkbox" name="ngramSrch" value="ngram">Use n-gram Index
+            <input id="inp3" type="checkbox" name="wildCardSearch" value="wild">Use WildCard Expression (*?/)<br>
+        </div>
+    </div>
+</form>
+</div>
+<br/>
+<div class="container ">
+    <div id="suggest"></div>
+    <div id="queryExpansion"></div>
+    <div id="abra"></div>
+    <div id="pagination-wrapper" style="justify-content: center;display: flex;"></div>
+</div>
+
+<div class="wrapper">
+    <div class="popup" style="height: 500px;">
+        <table width="100%">
+            <colgroup>
+                <col span="1" style="width: 80%;">
+                <col span="1" style="width: 20%;">
+            </colgroup>
+            <tr>
+                <td><div id="pName"></div></td>
+                <td><a href="#" class="close">X</a>
+                </td>
+            </tr>
+            <tr>
+                <td style="
+                  vertical-align: top;
+                  padding-top: 10px;
+                  ">
+                    <iframe src="" title="description" style="height: 420px;width: 98%;">
+                    <p>Your browser does not support iframes.</p>
+                </iframe></td>
+                <td style="vertical-align: top;
+
+                  padding-top: 10px;
+                  ">
+                    <div id="ml-magic">
+
+                    </div>
+                </td>
+
+            </tr>
+
+
+        </table>
+    </div>
+</div>
+</body>
+<script type="text/javascript">
+
+            var hitData;
+            var hitDataTable;
+            let state;
+	    var py_endpoint = "http://132.145.99.200:5000";
+            var py_resource = "/simDoc";
+            var py_query_ex = "/expQ";
+
+            $(document).ready(function() {
+
+                $("#inp1").keyup($.debounce(300, fetchSearchApi));
+		$("#inp1").keyup($.debounce(300, fetchQueryExp));
+                $("#inp2").click($.debounce(300, fetchSearchApi));
+                $("#inp3").click($.debounce(300, fetchSearchApi));
+                $(".popup").hide();
+
+
+
+            });
+
+            $("#inp1").val('');
+            var endpoint = "http://132.145.99.200:8878";
+            var resource = "/search";
+            var suggest = "/suggest";
+
+            function fetchSearchApi() {
+                $(".popup").fadeOut("slow");
+                $(".container").fadeIn("slow");
+                $('#ml-magic').empty();
+                $('#pName').empty();
+
+                $.ajax({
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    url: endpoint + resource,
+                    dataType: "json",
+                    data: $("#usrSrch_mthd").serialize(),
+                    success: function(hitData) {updateResp(hitData)},
+                    error: function(data) {handleError(data)}
+                });
+		<!--   fetchQueryExp(); -->
+            }
+	    function fetchQueryExp() {
+                $.ajax({
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    url: py_endpoint + py_query_ex,
+                    dataType: "json",
+                    data: $("#usrSrch_mthd").serialize(),
+                    success: function(data) {expQuery(data)},
+                    error: function(data) {handleError(data)}
+                });
+            }
+	    function expQuery(sugg){
+                $('#queryExpansion').empty()
+                if(sugg.length>1){
+                    console.log(sugg);
+                    var suggest = $('#queryExpansion')
+                    var htm = '<div class="card"><h3>Similar Query</h3><br/>'
+                    for (var i = 1 in sugg) {
+                        var t = sugg[i];
+
+                        htm+= "<div class='clickSugg' onclick='QuerySpellSuggest(\"" + t + "\")'>"+ t +"&emsp;&emsp;&emsp;</div>";
+                    }
+                    htm+="</div>"
+
+                    suggest.append(htm)
+                }
+            }
+            
+            function fetchSpellSuggest() {
+                $.ajax({
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    url: endpoint + suggest,
+                    dataType: "json",
+                    data: $("#usrSrch_mthd").serialize(),
+                    success: function(hitData) {suggestSpell(hitData)},
+                    error: function(data) {handleError(data)}
+                });
+		
+            }
+
+            function QuerySpellSuggest(in_data) {
+            $("#inp1").val(in_data);
+            $(".popup").fadeOut("slow");
+            $(".container").fadeIn("slow");
+            $('#ml-magic').empty();
+            $('#pName').empty();
+
+            var data2 = $("#usrSrch_mthd").serialize();
+<!--            data2["queryTerm"] = in_data;-->
+            console.log(in_data, data2);
+                $.ajax({
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    url: endpoint + resource,
+                    dataType: "json",
+                    data: data2,
+                    success: function(hitData) {updateResp(hitData)},
+                    error: function(data) {handleError(data)}
+                });
+				<!--   fetchQueryExp(); -->
+            }
+            function handleError(data) {
+                alert(data.responseText);
+            }
+
+            function updateResp(hitData) {
+                $('#abra').empty();
+                $('#pagination-wrapper').empty();
+                $('#suggest').empty();
+
+
+                state = {
+                'querySet': hitData,
+
+                'page': 1,
+                'rows': 3,
+                'window': 3,
+            };
+                 if(hitData.length==0 && $("#inp1").length!=0){
+                   console.log("Fetching Suggestion");
+		   fetchSpellSuggest();
+                 }
+                 if(hitData.length>0){
+                    buildTable();
+                 }
+            }
+
+            function pagination(querySet, page, rows) {
+
+                var trimStart = (page - 1) * rows
+                var trimEnd = trimStart + rows
+
+                var trimmedData = querySet.slice(trimStart, trimEnd)
+
+                var pages = Math.round(querySet.length / rows);
+
+                return {
+                    'querySet': trimmedData,
+                    'pages': pages,
+                }
+            }
+
+            function pageButtons(pages) {
+                var wrapper = document.getElementById('pagination-wrapper')
+
+                wrapper.innerHTML = ``
+                console.log('Pages:', pages)
+
+                var maxLeft = (state.page - Math.floor(state.window / 2))
+                var maxRight = (state.page + Math.floor(state.window / 2))
+
+                if (maxLeft < 1) {
+                    maxLeft = 1
+                    maxRight = state.window
+                }
+
+                if (maxRight > pages) {
+                    maxLeft = pages - (state.window - 1)
+
+                    if (maxLeft < 1){
+                        maxLeft = 1
+                    }
+                    maxRight = pages
+                }
+
+
+
+                for (var page = maxLeft; page <= maxRight; page++) {
+                    wrapper.innerHTML += `<button style="margin: 2px;" value=${page} class="page btn btn-sm btn-info">${page}</button>`
+                }
+
+                if (state.page != 1) {
+                    wrapper.innerHTML = `<button style="margin: 2px;" value=${1} class="page btn btn-sm btn-info">&#171; First</button>` + wrapper.innerHTML
+                }
+
+                if (state.page != pages) {
+                    wrapper.innerHTML += `<button style="margin: 2px;" value=${pages} class="page btn btn-sm btn-info">Last &#187;</button>`
+                }
+
+                $('.page').on('click', function() {
+                    $('#abra').empty()
+
+                    state.page = Number($(this).val())
+
+                    buildTable()
+                })
+
+            }
+
+            function suggestSpell(sugg){
+                $('#suggest').empty()
+                if(sugg.length>1){
+                    console.log(sugg);
+                    var suggest = $('#suggest')
+                    var htm = '<div class="card"><h3>Did you mean</h3><br/>'
+                    for (var i = 1 in sugg) {
+                        var t = sugg[i].sugg;
+
+                        htm+= "<div class='clickSugg' onclick='QuerySpellSuggest(\"" + t + "\")'>"+ t +"&emsp;&emsp;&emsp;</div>";
+                    }
+                    htm+="</div>"
+
+                    suggest.append(htm)
+                }
+            }
+            var py_endpoint = "http://132.145.99.200:5000";
+            var py_resource = "/simDoc";
+
+            function fetch_py_resp(f_path){
+                $.ajax({
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    url: py_endpoint + py_resource,
+                    dataType: "json",
+                    data: {"in_fpath":f_path},
+                    success: function(data){generateMlMagic(data)},
+                    error: function(data) {handleError(data)}
+                });
+            }
+
+            function generateMlMagic(data){
+                $('#ml-magic').empty();
+                var elm = $('#ml-magic');
+                elm.append(`Related terms <br/>`);
+                for (var i = 1 in data){
+                    var reTerm = data[i]["r_t"];
+                    elm.append(`
+                    <div class='clickSugg'
+                onclick='QuerySpellSuggest("${reTerm}")'> ${reTerm} </div><br/>`);
+                }
+                
+                elm.append(`<br/> Related Papers <br/>`);
+                
+                for (var i = 1 in data){
+                    if (i==6){
+                        break;
+                    }
+                    var rePaper = data[i]["p_"];
+                    elm.append(`
+                    <a class="openpop" href="{{ url_for('static', filename='')}}${rePaper}">${rePaper.split('\\').pop()}</a>`);
+                }
+		$(".openpop").click(function (e) {
+                    console.log("Calling From MAgic");
+                    e.preventDefault();
+                    var cell = $('#pName');
+                    console.log(cell);
+                    cell.empty();
+                    var p = $(this).attr('href');
+                    cell.append(p.split('\\').pop());
+                    $("iframe").attr("src", $(this).attr('href'));
+                    $(".container").fadeOut('slow');
+                    $(".popup").fadeIn('slow');
+                    fetch_py_resp($(this).attr('href'))
+                });
+                $(".close").click(function () {
+                    $(".popup").fadeOut("slow");
+                    $(".container").fadeIn("slow");
+                    $('#ml-magic').empty();
+                    $('#pName').empty();
+                });
+
+            }
+
+
+            function buildTable() {
+                var table = $('#abra')
+
+                var data = pagination(state.querySet, state.page, state.rows)
+                var myList = data.querySet
+
+                for (var i = 1 in myList) {
+                    //Keep in mind we are using "Template Litterals to create rows"
+
+                    var tt = myList[i].path;
+                    tt = tt.split("\\").slice(-3,).join("/");
+                    console.log(tt);
+                    var row = `<div class="card">
+                              <span style="float:left;">  <a class="openpop" href="{{ url_for('static', filename='')}}${tt}">${tt}</a></span>
+                                <span style="float:right;">${myList[i].score}</span><br/>
+                              <p>
+                              ${myList[i].contents}<br/>
+                              </p>
+                              </div>
+                              `
+                    table.append(row)
+                }
+
+                $(".openpop").click(function (e) {
+                    console.log("Calling From Search");
+                    e.preventDefault();
+                    var cell = $('#pName');
+                    console.log(cell);
+                    var p = $(this).attr('href');
+                    cell.append(p.split('\\').pop());
+                    $("iframe").attr("src", $(this).attr('href'));
+                    $(".container").fadeOut('slow');
+                    $(".popup").fadeIn('slow');
+<!--                    Here it should call the api and-->
+<!--                    fetch response and updaate another div-->
+                    fetch_py_resp($(this).attr('href'))
+                });
+                $(".close").click(function () {
+                    $(".popup").fadeOut("slow");
+                    $(".container").fadeIn("slow");
+                    $('#ml-magic').empty();
+                    $('#pName').empty();
+                });
+
+
+                pageButtons(data.pages)
+            }
+
+        </script>
+</html>
