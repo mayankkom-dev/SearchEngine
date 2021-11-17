@@ -5,4 +5,6 @@ Search Engine using Lucene and ML Techniques on Academic Research Papers DBLP
   https://drive.google.com/file/d/1SrjwN9UMQDPcyoE2TECPhBMnMbkj4OR4/view?usp=sharing
 - Unzip all the citeseer Paper in static folder. Keep the entire folder 2 in 
 static
-
+# Run the application
+- Start .jar file using java -jar Filename.jar
+- Start app.py using python
