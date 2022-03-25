@@ -8,3 +8,4 @@ static
 # Run the application
 - Start .jar file using java -jar Filename.jar
 - Start app.py using python
+
